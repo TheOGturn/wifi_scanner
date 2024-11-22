@@ -7,6 +7,7 @@ import requests
 import signal
 import sys
 import select
+import tabulate
 from datetime import datetime, timedelta
 from scapy.all import Dot11ProbeReq, sniff
 from tqdm import tqdm
