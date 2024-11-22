@@ -1,0 +1,6 @@
+scapy
+netifaces
+requests
+python-telegram-bot
+tabulate
+tqdm
