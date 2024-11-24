@@ -131,8 +131,8 @@ def get_log_messages(num_messages=10):
         try:
             timestamp, level, message = line.strip().split(" - ", 2)
             
-            # Remove milliseconds from the timestamp
-            timestamp = timestamp.split(".")[0]  
+            # Remove milliseconds from the timestamp (corrected again)
+            timestamp = timestamp.split(",")[0]  
 
             table_html += f"""
             <tr>
