@@ -14,6 +14,7 @@ from tqdm import tqdm
 import http.server
 import socketserver
 import threading
+from collections import OrderedDict
 
 # --- Configuration ---
 
@@ -24,7 +25,7 @@ CHAT_ID = ""  # Replace with your Telegram chat ID
 SCAN_DURATION = 4 * 60  # Scan for 4 minutes
 NOTIFICATION_THRESHOLD = 10 * 60  # 10 minutes cooldown for alerts
 WHITELIST_THRESHOLD = 5 * 60 * 60  # 5 hours for whitelisting
-CLEANUP_THRESHOLD = 1 * 60 * 60  # 1 hour for cleanup
+CLEANUP_THRESHOLD = 30 * 60  # 1 hour for cleanup was 1 * 60 * 60
 DAILY_REPORT_TIME = 5  # 5 AM local time for the daily report
 DATA_FILE = "ssid_info.csv"  # File to store SSID information
 
@@ -35,7 +36,7 @@ interrupted = False  # Flag to track if Ctrl+C has been pressed
 
 # --- Web server functions ---
 def generate_ssid_table_html(ssid_info):
-    """Generates the HTML code for the SSID table."""
+    """Generates the HTML code for the SSID table, sorted by RSSI."""
     table_html = """
     <table border="1">
       <thead>
@@ -50,7 +51,11 @@ def generate_ssid_table_html(ssid_info):
       </thead>
       <tbody>
     """
-    for ssid, info in ssid_info.items():
+
+    # Sort ssid_info by RSSI in descending order (strongest first)
+    sorted_ssid_info = OrderedDict(sorted(ssid_info.items(), key=lambda item: item[1]['rssi'], reverse=True))
+
+    for ssid, info in sorted_ssid_info.items():  # Use the sorted dictionary
         table_html += f"""
         <tr>
           <td>{ssid}</td>
@@ -60,7 +65,7 @@ def generate_ssid_table_html(ssid_info):
           <td>{info["whitelisted"]}</td>
           <td>{info["rssi"]}</td>
         </tr>
-      """
+        """
     table_html += """
       </tbody>
     </table>
@@ -192,8 +197,13 @@ def sniff_packets(pkt):
     """Processes sniffed network packets."""
     if pkt.haslayer(Dot11ProbeReq):
         ssid = pkt[Dot11ProbeReq].info.decode('utf-8')
-        now = datetime.now()
         rssi = pkt.dBm_AntSignal  # Get RSSI value
+
+        # Ignore hidden SSIDs with RSSI >= -30 
+        if not ssid and rssi >= -55:  
+            return
+
+        now = datetime.now()
         if not ssid:  # Check if SSID is empty (hidden SSID)
             ssid = "Hidden"
         if any(keyword in ssid.lower() for keyword in ["house", "netgear", "spectrum"]):  # Ignore common SSIDs
@@ -252,13 +262,17 @@ def send_daily_report(previous_ssid_info):
     return ssid_info.copy()
 
 def display_ssid_table(ssid_info):
-    """Displays SSID information in a formatted table."""
+    """Displays SSID information in a formatted table, sorted by RSSI."""
     os.system('clear')
     table_data = [
         ["Line", "SSID", "First Seen", "Last Seen", "Alerted", "Whitelisted", "RSSI"]
     ]
     line_num = 1
-    for ssid, info in ssid_info.items():
+
+    # Sort ssid_info by RSSI in descending order (strongest first)
+    sorted_ssid_info = OrderedDict(sorted(ssid_info.items(), key=lambda item: item[1]['rssi'], reverse=True))  
+
+    for ssid, info in sorted_ssid_info.items():  # Use the sorted dictionary
         table_data.append([
             line_num,
             ssid,
@@ -270,6 +284,7 @@ def display_ssid_table(ssid_info):
         ])
         line_num += 1
     print(tabulate.tabulate(table_data, headers="firstrow", tablefmt="grid"))
+
 
 def handle_whitelist_input(ssid_info):
     """Handles user input for whitelisting SSIDs."""
