@@ -39,7 +39,7 @@ httpd = None  # Add this for the global httpd object
 logging.basicConfig(filename='ssid_monitor.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-
+# Added a function to get the cpu temp for the overclocked rasp pi
 def get_cpu_temperature():
     """Gets the CPU temperature in Fahrenheit."""
     try:
