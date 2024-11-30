@@ -36,10 +36,22 @@ ssid_info = {}  # Dictionary to store SSID information
 whitelist = set()  # Set to store whitelisted SSIDs
 interrupted = False  # Flag to track if the server has been stopped
 httpd = None  # Add this for the global httpd object
-logging.basicConfig(filename='ssid_monitor.log', level=logging.INFO, 
+logging.basicConfig(filename='ssid_monitor.log', level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Web server functions ---
+
+def get_cpu_temperature():
+    """Gets the CPU temperature in Fahrenheit."""
+    try:
+        temp_celsius = float(
+            subprocess.check_output(['cat', '/sys/class/thermal/thermal_zone0/temp']).decode('utf-8')
+        ) / 1000
+        temp_fahrenheit = (temp_celsius * 9 / 5) + 32
+        return f"{temp_fahrenheit:.1f}"
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError) as e:
+        logging.error(f"Error getting CPU temperature: {e}")
+        return "N/A"
+
 def generate_ssid_table_html(ssid_info):
     """Generates the HTML code for the SSID table with checkboxes and whitelist button."""
     table_html = """
@@ -105,9 +117,12 @@ def generate_ssid_table_html(ssid_info):
     <body>
         <h1>Detected SSIDs</h1>
         {table_html}
+        <h2>System Information</h2>
+        <p>CPU Temperature: {get_cpu_temperature()} F</p>
     </body>
     </html>
     """
+
 
 
 def get_log_messages(num_messages=10):
@@ -130,9 +145,9 @@ def get_log_messages(num_messages=10):
     for line in lines:
         try:
             timestamp, level, message = line.strip().split(" - ", 2)
-            
+
             # Remove milliseconds from the timestamp (corrected again)
-            timestamp = timestamp.split(",")[0]  
+            timestamp = timestamp.split(",")[0]
 
             table_html += f"""
             <tr>
@@ -162,7 +177,7 @@ class MyHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
         global ssid_info
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length).decode("utf-8")
-        parsed_data = parse_qs(post_data)  
+        parsed_data = parse_qs(post_data)
 
 
         if 'ssid' in parsed_data:
@@ -201,7 +216,7 @@ def set_monitor_mode():
     """
     interfaces = netifaces.interfaces()
     for iface in interfaces:
-        if iface == 'lo':  # Skip loopback interface
+        if iface == 'lo' or iface.startswith('eth'):  # Skip loopback interface
             continue
         if netifaces.ifaddresses(iface).get(
                 netifaces.AF_INET):  # Skip interfaces with IP addresses
@@ -318,7 +333,7 @@ def sniff_packets(pkt):
         if not ssid:  # Check if SSID is empty (hidden SSID)
             ssid = "Hidden"
         if any(keyword in ssid.lower()
-               for keyword in ["house", "netgear", "spectrum"]
+               for keyword in ["ssid to ignore"]
               ):  # Ignore common SSIDs
             return  # Skip this SSID
         if ssid in ssid_info:
@@ -336,7 +351,7 @@ def sniff_packets(pkt):
         elapsed_time = (now - ssid_info[ssid]["first_seen"]).total_seconds()
         if not ssid_info[ssid]["alerted"] and not ssid_info[ssid][
                 "whitelisted"] and NOTIFICATION_THRESHOLD < elapsed_time < WHITELIST_THRESHOLD:  # Check for notifications
-            message = f"SSID {ssid} has been seen for {elapsed_time / 60:.2f} minutes. Consider investigating."
+            message = f"SSID {ssid} has been seen for {elapsed_time / 30:.2f} minutes. Consider investigating."
             send_silent_message(message)
             ssid_info[ssid]["alerted"] = True
             logging.info(f"Sent alert for SSID: {ssid}")
@@ -452,7 +467,7 @@ def main():
     while True:
         try:
             # Removed the non-blocking sniffing loop
-            sniff(prn=sniff_packets, iface=monitor_interface, timeout=SCAN_DURATION)  
+            sniff(prn=sniff_packets, iface=monitor_interface, timeout=SCAN_DURATION)
         except OSError as e:
             print(f"Error during sniffing: {e}")
         except KeyboardInterrupt:
